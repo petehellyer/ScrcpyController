@@ -16,6 +16,7 @@ I am an Android Developer myself and I always use scrcpy ❤ to test my work on 
 - Quick *Shortcuts* button for you to remember scrcpy shortcuts
 - Easy installation, scrcpy does not need to be added in your system's PATH Variable
 - *Shortcuts* are directly loaded from scrcpy's GitHub README if you are connected to the internet, else static shortcuts are loaded from scrcpy v1.16
+- (macOS) automatically hide / show scrcpy windows  when sidebar tool is collapsed / expanded
 
 ## Requirements
 1. Works on Android Studio 4.0+ and other IntelliJ-based IDEs with build number `193.4099.13` and above 
