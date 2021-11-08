@@ -12,12 +12,15 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.table.JBTable
 import com.vladsch.flexmark.ext.tables.TablesExtension
 import com.vladsch.flexmark.html.HtmlRenderer
 import com.vladsch.flexmark.parser.Parser
 import com.vladsch.flexmark.util.data.MutableDataSet
 import icons.Icons
+import org.jetbrains.annotations.NotNull
 import se.vidstige.jadb.*
 import java.awt.Dimension
 import java.io.File
@@ -39,10 +42,11 @@ typealias IntProp = KMutableProperty1<ScrcpyProps, Int?>
 typealias StringProp = KMutableProperty1<ScrcpyProps, String?>
 typealias BooleanProp = KMutableProperty1<ScrcpyProps, Boolean>
 
-internal class ScrcpyController(private val toolWindow: ToolWindow, project: Project) : DeviceDetectionListener {
+internal class ScrcpyController(private val toolWindow: ToolWindow, val project: Project) : DeviceDetectionListener {
 
   private var shTerminalRunner: TerminalUtils? = null
   private var isStarted: Boolean = false
+  var lastToolWindowVisibilityState: Boolean? = null
   private var props = ScrcpyProps.getInstance()
   var mainPanel: JPanel? = null
 
@@ -100,6 +104,7 @@ internal class ScrcpyController(private val toolWindow: ToolWindow, project: Pro
   private var positionY: JFormattedTextField? = null
   private var positionWidth: JFormattedTextField? = null
   private var positionHeight: JFormattedTextField? = null
+  private var autoHideShow: JCheckBox? = null
 
   //other
   private var readOnly: JCheckBox? = null
@@ -185,7 +190,9 @@ internal class ScrcpyController(private val toolWindow: ToolWindow, project: Pro
             commandExecutors[it] = cmd
             cmd.start()
             isStarted = true
-            shTerminalRunner = TerminalUtils(project)
+            if (autoHideShow?.isSelected == true) {
+              shTerminalRunner = TerminalUtils(project)
+            }
             loadDevices(false)
           }
         }
@@ -210,7 +217,6 @@ internal class ScrcpyController(private val toolWindow: ToolWindow, project: Pro
       override fun ancestorAdded(p0: AncestorEvent?) {
         startDeviceWatcher()
         loadDevices(true)
-        setDeviceWindow(false)
       }
 
       override fun ancestorMoved(p0: AncestorEvent?) {
@@ -218,7 +224,6 @@ internal class ScrcpyController(private val toolWindow: ToolWindow, project: Pro
 
       override fun ancestorRemoved(p0: AncestorEvent?) {
         stopDeviceWatcher()
-        setDeviceWindow(true)
       }
     })
   }
@@ -647,6 +652,29 @@ internal class ScrcpyController(private val toolWindow: ToolWindow, project: Pro
     }
   }
 
+  fun registerToolWindowEventWatcher() {
+   val content = toolWindow.contentManager.getContent(0)
+    if (content != null) {
+      project.messageBus.connect(content)
+        .subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
+          override fun stateChanged(@NotNull toolWindowManager: ToolWindowManager) {
+
+            if (lastToolWindowVisibilityState == null) {
+               lastToolWindowVisibilityState = toolWindow.isVisible
+               return
+            }
+
+            if (lastToolWindowVisibilityState != toolWindow.isVisible) {
+                lastToolWindowVisibilityState = toolWindow.isVisible
+                setDeviceWindowVisibility(lastToolWindowVisibilityState!!)
+            }
+
+          }
+        })
+    }
+
+  }
+
   /**
    *  Convenient method to set device window visibility
    *
@@ -655,10 +683,14 @@ internal class ScrcpyController(private val toolWindow: ToolWindow, project: Pro
    *  Reference:
    *    - https://intellij-support.jetbrains.com/hc/en-us/community/posts/360005329339-Execute-command-in-the-terminal-from-plugin-action
    */
-  private fun setDeviceWindow(minimize: Boolean) {
+  private fun setDeviceWindowVisibility(visible: Boolean) {
+
+    val enabled =  autoHideShow?.isSelected ?: false
+    if (!enabled) return
+
     var command =
       "osascript -e 'tell application \"System Events\" to tell process \"scrcpy\" to click button 3 of window 1'"
-    if (!minimize) {
+    if (visible) {
       command = "osascript -e 'tell application \"System Events\" to tell process \"Dock\" to click UI element \"scrcpy\" of list 1'"
     }
     shTerminalRunner?.let { terminal->
