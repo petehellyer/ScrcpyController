@@ -6,6 +6,7 @@ import com.intellij.ide.BrowserUtil
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextBrowseFolderListener
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -33,12 +34,15 @@ import javax.swing.table.DefaultTableModel
 import javax.swing.table.TableModel
 import kotlin.reflect.KMutableProperty1
 
+
 typealias IntProp = KMutableProperty1<ScrcpyProps, Int?>
 typealias StringProp = KMutableProperty1<ScrcpyProps, String?>
 typealias BooleanProp = KMutableProperty1<ScrcpyProps, Boolean>
 
-internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDetectionListener {
+internal class ScrcpyController(private val toolWindow: ToolWindow, project: Project) : DeviceDetectionListener {
 
+  private var shTerminalRunner: TerminalUtils? = null
+  private var isStarted: Boolean = false
   private var props = ScrcpyProps.getInstance()
   var mainPanel: JPanel? = null
 
@@ -180,18 +184,24 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
             }
             commandExecutors[it] = cmd
             cmd.start()
+            isStarted = true
+            shTerminalRunner = TerminalUtils(project)
             loadDevices(false)
           }
         }
       } catch (cce: ConcurrentModificationException) {
         cce.printStackTrace()
+        isStarted = false
       }
     }
 
     stop?.addActionListener {
+      isStarted = false
       selectedDevices.intersect(commandExecutors.keys().toList()).forEach {
         commandExecutors[it]?.interrupt()
         commandExecutors.remove(it)
+        shTerminalRunner?.close()
+        shTerminalRunner = null
         loadDevices(false)
       }
     }
@@ -200,6 +210,7 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
       override fun ancestorAdded(p0: AncestorEvent?) {
         startDeviceWatcher()
         loadDevices(true)
+        setDeviceWindow(false)
       }
 
       override fun ancestorMoved(p0: AncestorEvent?) {
@@ -207,6 +218,7 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
 
       override fun ancestorRemoved(p0: AncestorEvent?) {
         stopDeviceWatcher()
+        setDeviceWindow(true)
       }
     })
   }
@@ -633,5 +645,28 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
         toRun()
       }.start()
     }
+  }
+
+  /**
+   *  Convenient method to set device window visibility
+   *
+   *  Tested only on macOS, user must enable accessibility permissions for Android Studio
+   *
+   *  Reference:
+   *    - https://intellij-support.jetbrains.com/hc/en-us/community/posts/360005329339-Execute-command-in-the-terminal-from-plugin-action
+   */
+  private fun setDeviceWindow(minimize: Boolean) {
+    var command =
+      "osascript -e 'tell application \"System Events\" to tell process \"scrcpy\" to click button 3 of window 1'"
+    if (!minimize) {
+      command = "osascript -e 'tell application \"System Events\" to tell process \"Dock\" to click UI element \"scrcpy\" of list 1'"
+    }
+    shTerminalRunner?.let { terminal->
+      if (terminal.isAvailable()
+        && isStarted) {
+        terminal.run(command)
+      }
+    }
+
   }
 }

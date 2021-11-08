@@ -12,7 +12,7 @@ import com.intellij.ui.content.ContentFactory
 
 class ScrcpyToolWindowFactory : ToolWindowFactory {
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-    val controller = ScrcpyController(toolWindow)
+    val controller = ScrcpyController(toolWindow,project)
     val content = ContentFactory.SERVICE.getInstance().createContent(controller.mainPanel, "Controller", false)
     toolWindow.contentManager.addContent(content)
   }
