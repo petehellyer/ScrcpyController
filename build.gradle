@@ -11,7 +11,7 @@ buildscript {
 }
 
 plugins {
-    id "org.jetbrains.intellij" version "1.2.0"
+    id "org.jetbrains.intellij" version "1.2.1"
 }
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -28,18 +28,28 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
         jvmTarget = "1.8"
     }
 }
+buildSearchableOptions.enabled = false
+
 group "com.codertainment"
-version "1.0.0"
+version "1.0.1"
 
 intellij {
     pluginName='Scrcpy Controller'
     updateSinceUntilBuild=false
     version='IU-2020.3.1'
-
-    //intellij.localPath = project.hasProperty("StudioRunPath") ? StudioRunPath : StudioCompilePath
+    plugins = ['org.jetbrains.plugins.terminal']
 }
+
+runIde {
+    // Absolute path to installed target 3.5 Android Studio to use as IDE Development Instance
+    // The "Contents" directory is macOS specific.
+    ideDir = file('/Applications/Android Studio.app/Contents')
+}
+
+
 patchPluginXml {
     changeNotes="""
+        <b>v1.0.1</b>: Hide / show scrcpy windows automatically when sidebar tool is collapsed / expanded (working only on macOS)<br>
         <b>v1.0.0</b>: <br>
         Add options from scrcpy v1.19 and v1.18 release: <br>
         <ul>

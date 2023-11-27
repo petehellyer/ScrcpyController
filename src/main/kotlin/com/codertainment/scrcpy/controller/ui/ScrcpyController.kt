@@ -6,17 +6,21 @@ import com.intellij.ide.BrowserUtil
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextBrowseFolderListener
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.table.JBTable
 import com.vladsch.flexmark.ext.tables.TablesExtension
 import com.vladsch.flexmark.html.HtmlRenderer
 import com.vladsch.flexmark.parser.Parser
 import com.vladsch.flexmark.util.data.MutableDataSet
 import icons.Icons
+import org.jetbrains.annotations.NotNull
 import se.vidstige.jadb.*
 import java.awt.Dimension
 import java.io.File
@@ -33,12 +37,16 @@ import javax.swing.table.DefaultTableModel
 import javax.swing.table.TableModel
 import kotlin.reflect.KMutableProperty1
 
+
 typealias IntProp = KMutableProperty1<ScrcpyProps, Int?>
 typealias StringProp = KMutableProperty1<ScrcpyProps, String?>
 typealias BooleanProp = KMutableProperty1<ScrcpyProps, Boolean>
 
-internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDetectionListener {
+internal class ScrcpyController(private val toolWindow: ToolWindow, val project: Project) : DeviceDetectionListener {
 
+  private var shTerminalRunner: TerminalUtils? = null
+  private var isStarted: Boolean = false
+  var lastToolWindowVisibilityState: Boolean? = null
   private var props = ScrcpyProps.getInstance()
   var mainPanel: JPanel? = null
 
@@ -96,6 +104,7 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
   private var positionY: JFormattedTextField? = null
   private var positionWidth: JFormattedTextField? = null
   private var positionHeight: JFormattedTextField? = null
+  private var autoHideShow: JCheckBox? = null
 
   //other
   private var readOnly: JCheckBox? = null
@@ -180,18 +189,26 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
             }
             commandExecutors[it] = cmd
             cmd.start()
+            isStarted = true
+            if (autoHideShow?.isSelected == true) {
+              shTerminalRunner = TerminalUtils(project)
+            }
             loadDevices(false)
           }
         }
       } catch (cce: ConcurrentModificationException) {
         cce.printStackTrace()
+        isStarted = false
       }
     }
 
     stop?.addActionListener {
+      isStarted = false
       selectedDevices.intersect(commandExecutors.keys().toList()).forEach {
         commandExecutors[it]?.interrupt()
         commandExecutors.remove(it)
+        shTerminalRunner?.close()
+        shTerminalRunner = null
         loadDevices(false)
       }
     }
@@ -633,5 +650,55 @@ internal class ScrcpyController(private val toolWindow: ToolWindow) : DeviceDete
         toRun()
       }.start()
     }
+  }
+
+  fun registerToolWindowEventWatcher() {
+   val content = toolWindow.contentManager.getContent(0)
+    if (content != null) {
+      project.messageBus.connect(content)
+        .subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
+          override fun stateChanged(@NotNull toolWindowManager: ToolWindowManager) {
+
+            if (lastToolWindowVisibilityState == null) {
+               lastToolWindowVisibilityState = toolWindow.isVisible
+               return
+            }
+
+            if (lastToolWindowVisibilityState != toolWindow.isVisible) {
+                lastToolWindowVisibilityState = toolWindow.isVisible
+                setDeviceWindowVisibility(lastToolWindowVisibilityState!!)
+            }
+
+          }
+        })
+    }
+
+  }
+
+  /**
+   *  Convenient method to set device window visibility
+   *
+   *  Tested only on macOS, user must enable accessibility permissions for Android Studio
+   *
+   *  Reference:
+   *    - https://intellij-support.jetbrains.com/hc/en-us/community/posts/360005329339-Execute-command-in-the-terminal-from-plugin-action
+   */
+  private fun setDeviceWindowVisibility(visible: Boolean) {
+
+    val enabled =  autoHideShow?.isSelected ?: false
+    if (!enabled) return
+
+    var command =
+      "osascript -e 'tell application \"System Events\" to tell process \"scrcpy\" to click button 3 of window 1'"
+    if (visible) {
+      command = "osascript -e 'tell application \"System Events\" to tell process \"Dock\" to click UI element \"scrcpy\" of list 1'"
+    }
+    shTerminalRunner?.let { terminal->
+      if (terminal.isAvailable()
+        && isStarted) {
+        terminal.run(command)
+      }
+    }
+
   }
 }
